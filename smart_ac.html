@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart AC - Fuzzy Logic Pro</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 850px;
+      padding: 20px;
+    }
+    .game-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      padding: 25px;
+      position: relative;
+      overflow: hidden;
+    }
+    h1 {
+      text-align: center;
+      color: #38bdf8;
+      margin-bottom: 5px;
+      font-size: 1.8rem;
+    }
+    .target-box {
+      background: #0f172a;
+      padding: 15px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border-left: 4px solid #38bdf8;
+    }
+    canvas {
+      width: 100%;
+      background: #020617;
+      border-radius: 16px;
+      display: block;
+    }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .btn {
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+      background: #334155;
+      color: white;
+    }
+    .btn:hover { background: #475569; }
+    .btn-primary { background: #0284c7; }
+    .btn-primary:hover { background: #0369a1; }
+    .btn-success { background: #059669; }
+    
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+      background: rgba(255,255,255,0.05);
+      padding: 15px;
+      border-radius: 12px;
+    }
+    .stat-item span {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .stat-item b {
+      color: #38bdf8;
+      font-size: 1.1rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="game-card">
+    <h1>Fuzzy Logic AC Controller</h1>
+    
+    <div class="target-box">
+      <small>USER REQUEST:</small>
+      <div id="targetDesc">"I want the room to be <b>Perfectly Comfortable</b> and <b>Moderately Dry</b>"</div>
+    </div>
+
+    <canvas id="acCanvas" width="800" height="400"></canvas>
+
+    <div class="controls-grid">
+      <button class="btn" onclick="adjust('temp', 1)">Temp +</button>
+      <button class="btn btn-success" onclick="serve()">Analyze Comfort</button>
+      <button class="btn" onclick="adjust('hum', 5)">Humidity +</button>
+      <button class="btn" onclick="adjust('temp', -1)">Temp -</button>
+      <button class="btn btn-primary" onclick="reset()">Reset AC</button>
+      <button class="btn" onclick="adjust('hum', -5)">Humidity -</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-item"><span>Current Temp</span><b id="txtTemp">-</b></div>
+      <div class="stat-item"><span>Current Humidity</span><b id="txtHum">-</b></div>
+      <div class="stat-item"><span>Fan intensity</span><b id="txtFan">-</b></div>
+      <div class="stat-item"><span>Efficiency</span><b id="txtScore">-</b></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('acCanvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Fuzzy Goals
+  const targetTemp = 23;
+  const targetHum = 40;
+
+  let state = {
+    temp: 16,
+    hum: 20,
+    fan: 0,
+    submitted: false,
+    score: 0
+  };
+
+  // Fuzzy Logic Function: Returns a descriptive string based on "degree"
+  function getFuzzyLabel(value, type) {
+    if (type === 'temp') {
+      if (value < 16) return "Freezing";
+      if (value < 20) return "Moderately Cold";
+      if (value < 22) return "Slightly Chilly";
+      if (value <= 25) return "Perfectly Comfortable";
+      if (value <= 28) return "Slightly Warm";
+      if (value <= 32) return "Moderately Hot";
+      return "Extremely Scorching";
+    } else {
+      if (value < 30) return "Very Dry";
+      if (value <= 50) return "Moderately Dry";
+      if (value <= 70) return "Slightly Humid";
+      return "Extremely Sticky";
+    }
+  }
+
+  function adjust(prop, val) {
+    if (state.submitted) return;
+    state[prop] += val;
+    // Limits
+    if (state.temp < 10) state.temp = 10;
+    if (state.temp > 40) state.temp = 40;
+    if (state.hum < 0) state.hum = 0;
+    if (state.hum > 100) state.hum = 100;
+  }
+
+  function serve() {
+    state.submitted = true;
+    let tErr = Math.abs(state.temp - targetTemp) * 3;
+    let hErr = Math.abs(state.hum - targetHum);
+    state.score = Math.max(0, 100 - Math.round(tErr + hErr));
+  }
+
+  function reset() {
+    state = { temp: 16, hum: 20, fan: 0, submitted: false, score: 0 };
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 800, 400);
+
+    // Dynamic Background color based on Temp
+    // Cold (blue) to Hot (red)
+    let hue = 200 - (state.temp - 10) * 5; 
+    ctx.fillStyle = `hsl(${hue}, 40%, 15%)`;
+    ctx.fillRect(0,0,800,400);
+
+    // Draw AC Unit
+    ctx.fillStyle = "#f1f5f9";
+    ctx.beginPath();
+    ctx.roundRect(250, 100, 300, 80, 10);
+    ctx.fill();
+    
+    // AC Display
+    ctx.fillStyle = "#000";
+    ctx.fillRect(470, 120, 60, 30);
+    ctx.fillStyle = "#38bdf8";
+    ctx.font = "16px monospace";
+    ctx.fillText(state.temp + "°C", 475, 140);
+
+    // Animated Airflow (Fuzzy output)
+    state.fan = (Math.abs(state.temp - 24) * 2) + (state.hum / 5);
+    let fanDisplay = Math.min(100, Math.round(state.fan));
+    
+    if (fanDisplay > 10) {
+      ctx.strokeStyle = `rgba(56, 189, 248, ${fanDisplay/100})`;
+      ctx.lineWidth = 3;
+      let time = Date.now() * 0.01;
+      for(let i=0; i<4; i++) {
+        let shift = (time + i*10) % 50;
+        ctx.beginPath();
+        ctx.moveTo(280 + i*80, 180);
+        ctx.lineTo(280 + i*80, 180 + shift);
+        ctx.stroke();
+      }
+    }
+
+    // UI Updates
+    document.getElementById('txtTemp').textContent = getFuzzyLabel(state.temp, 'temp');
+    document.getElementById('txtHum').textContent = getFuzzyLabel(state.hum, 'hum');
+    document.getElementById('txtFan').textContent = fanDisplay + "%";
+    document.getElementById('txtScore').textContent = state.submitted ? state.score + "%" : "Pending";
+
+    if (state.submitted) {
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(0,0,800,400);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "30px Arial";
+      ctx.fillText("Fuzzy Comfort Result", 400, 180);
+      ctx.font = "60px Arial";
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillText(state.score + "%", 400, 260);
+    } else {
+      ctx.textAlign = "left"; // Reset for other draws
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+</script>
+
+</body>
+</html>
